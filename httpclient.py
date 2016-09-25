@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
-# Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
+# Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust, Justin Wong
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,34 +21,48 @@
 import sys
 import socket
 import re
-# you may use urllib to encode data appropriately
 import urllib
+from urlparse import urlparse
 
 def help():
     print "httpclient.py [GET/POST] [URL]\n"
 
 class HTTPResponse(object):
-    def __init__(self, code=200, body=""):
+    def __init__(self, code = 200, body = ""):
         self.code = code
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
-
-    def connect(self, host, port):
-        # use sockets!
-        return None
+    def get_host_port_ID(self, url):
+        host = url.hostname
+        #host = (url.netloc).split(":")[0]
+        if url.port <> None:
+            port = url.port
+        else:
+            port = 80
+        ID = url.path
+        if (url.params).split(' ')[0] <> '':
+            ID += ';' + url.params
+        if (url.query).split(' ')[0] <> '':
+            ID += '?' + url.query
+        if (url.fragment).split(' ')[0] <> '':
+            ID += '#' + url.fragment
+        return host, port, ID
+    
+    def connect_to(self, host, port):
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((host, port))
+        return client_socket
 
     def get_code(self, data):
-        return None
+        return int(data.split()[1])
 
-    def get_headers(self,data):
-        return None
+    def get_headers(self, data):
+        return data.split("\r\n\r\n")[0]
 
     def get_body(self, data):
-        return None
+        return data.split("\r\n\r\n")[1]
 
-    # read everything from the socket
     def recvall(self, sock):
         buffer = bytearray()
         done = False
@@ -60,22 +74,34 @@ class HTTPClient(object):
                 done = not part
         return str(buffer)
 
-    def GET(self, url, args=None):
-        code = 500
-        body = ""
+    def GET(self, url, args = None):
+        host, port, ID = self.get_host_port_ID(urlparse(url))
+        connection = self.connect_to(host, port)
+        connection.sendall("GET " + ID + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n")
+        return_msg = self.recvall(connection)
+        code = self.get_code(return_msg)
+        body = self.get_body(return_msg)
         return HTTPResponse(code, body)
 
-    def POST(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPResponse(code, body)
-
-    def command(self, url, command="GET", args=None):
-        if (command == "POST"):
-            return self.POST( url, args )
+    def POST(self, url, args = None):
+        host, port, ID = self.get_host_port_ID(urlparse(url))
+        if args <> None:
+            data = urllib.urlencode(args)
         else:
-            return self.GET( url, args )
-    
+            data = ""
+        connection = self.connect_to(host, port)
+        connection.sendall("POST " + ID + " HTTP/1.1\r\nHost: " + host + "\r\nContent-Type: application/x-www-form-urlencoded; charset=utf-8\r\nContent-Length: " + str(len(data)) + "\r\n\r\n" + data)
+        return_msg = self.recvall(connection)
+        code = self.get_code(return_msg)
+        body = self.get_body(return_msg)
+        return HTTPResponse(code, body)
+
+    def command(self, url, command = "GET", args = None):
+        if (command == "POST"):
+            return self.POST(url, args)
+        else:
+            return self.GET(url, args)
+
 if __name__ == "__main__":
     client = HTTPClient()
     command = "GET"
@@ -83,6 +109,6 @@ if __name__ == "__main__":
         help()
         sys.exit(1)
     elif (len(sys.argv) == 3):
-        print client.command( sys.argv[2], sys.argv[1] )
+        print client.command(sys.argv[2], sys.argv[1]) + "\n"
     else:
-        print client.command( sys.argv[1] )   
+        print client.command(sys.argv[1]) + "\n"
